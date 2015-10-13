@@ -10,15 +10,19 @@ using namespace cv;
 using namespace std;
 
 //キャリブレーション関係変数
-#define IMAGE_NUM  (13)         /* 画像数 */
+#define IMAGE_NUM  (10)         /* 画像数 */
 #define PAT_ROW    (7)          /* パターンの行数 */
 #define PAT_COL    (10)         /* パターンの列数 */
 #define PAT_SIZE   (PAT_ROW*PAT_COL)
 #define ALL_POINTS (IMAGE_NUM*PAT_SIZE)
 #define CHESS_SIZE (24.0)       /* パターン1マスの1辺サイズ[mm] */
 
+#define PROJECTOR_WIDTH (1280) //プロジェクタ解像度
+#define PROJECTOR_HEIGHT (800) //プロジェクタ解像度
+//1280 * 800の場合
 #define PROJECTOR_CHESS_SIZE_WIDTH (103) /* プロジェクタ画像上でのパターン1マスの幅サイズ[pixel] */
 #define PROJECTOR_CHESS_SIZE_HEIGHT (90) /* プロジェクタ画像上でのパターン1マスの高さサイズ[pixel] */ //目測値
+
 
 const Size patternSize(10, 7); //チェッカパターンの交点の数
 
@@ -26,14 +30,14 @@ const char* windowname_proj = "Projector Pattern";
 const char* windowname_cam = "Camera Pattern";
 
 //各種名前
-const std::string	windowNameUnd_R = "Undistorted RPlane Image";
-const std::string	windowNameUnd_B = "Undistorted BPlane Image";
-const std::string	windowNameUnd_src = "Undistorted src Image";
+const string	windowNameUnd_R = "Undistorted RPlane Image";
+const string	windowNameUnd_B = "Undistorted BPlane Image";
+const string	windowNameUnd_src = "Undistorted src Image";
 
-const std::string srcfoldername = "../src_image_0424/";
-const std::string rPlanefoldername = "../Rplane_image_0424/";
-const std::string bPlanefoldername = "../Bplane_image_0424/";
-const std::string undistortedfoldername = "../undistorted_image_0424/";
+const string srcfoldername = "../src_image_0424/";
+const string rPlanefoldername = "../Rplane_image_0424/";
+const string bPlanefoldername = "../Bplane_image_0424/";
+const string undistortedfoldername = "../undistorted_image_0424/";
 
 //入力画像配列
 vector<Mat> checkerimg_src;
@@ -57,6 +61,9 @@ vector<vector<Point3f>> worldPoints(IMAGE_NUM);
 vector<vector<Point2f>> cameraImagePoints_camera(IMAGE_NUM);
 //プロジェクタキャリブレーション用 カメラ画像座標でのチェッカ交点座標
 vector<vector<Point2f>> cameraImagePoints_proj(IMAGE_NUM);
+//プロジェクタキャリブレーション用 プロジェクタ画像上でのチェッカボードの交点座標
+vector<vector<Point2f>> projImagePoints_checkerboard;
+
 
 // 対応するワールド座標系パターン
 TermCriteria criteria( CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.001 );  
@@ -67,15 +74,22 @@ cv::Mat				cameraDistCoeffs;		// レンズ歪み行列
 cv::vector<cv::Mat>	cameraRotationVectors;	// 撮影画像ごとに得られる回転ベクトル
 cv::vector<cv::Mat>	cameraTranslationVectors;	// 撮影画像ごとに得られる平行移動ベクトル
 
+/*プロジェクタパラメータ行列*/
+cv::Mat				projMatrix;		// 内部パラメータ行列
+cv::Mat				projDistCoeffs;		// レンズ歪み行列
+cv::vector<cv::Mat>	projRotationVectors;	// 撮影画像ごとに得られる回転ベクトル
+cv::vector<cv::Mat>	projTranslationVectors;	// 撮影画像ごとに得られる平行移動ベクトル
+
+
 Mat bin_b, bin_r; //R,Bプレーンの結果
 
 
 //フォルダ名と画像番号からファイル名を生成
-std::string get_capImgFileName(std::string foldername, int num){
-	std::string str1 = "cap";
-	std::string str2 = std::to_string(num);
-	std::string str3 = ".png";
-	std::string filename = foldername + str1 + str2 + str3;
+string get_capImgFileName(string foldername, int num){
+	string str1 = "cap";
+	string str2 = to_string(num);
+	string str3 = ".png";
+	string filename = foldername + str1 + str2 + str3;
 
 	return filename;
 }
@@ -185,25 +199,30 @@ void findProjectorChessboardCorners(){
 
 	// チェックパターンの交点座標を求め，imagePointsに格納する
 	for(int i = 0; i < IMAGE_NUM; i++){
-		std::cout << "Find corners from image " << i;
+		cout << "Find corners from image " << i;
 		bool result = findChessboardCorners(checkerimg_proj_undistCamera[i], patternSize, cameraImagePoints_proj[i]);
+		//bool result = findChessboardCorners(checkerimg_proj[i], patternSize, cameraImagePoints_proj[i]);
 		if(result){
-			std::cout << " ... All corners found." << std::endl;
-			std::cout << cameraImagePoints_proj[i].size() << std::endl;
+			cout << " ... All corners found." << endl;
+			cout << cameraImagePoints_proj[i].size() << endl;
 			//cv::Mat grayImg;
 			//cv::cvtColor(checkerimg_proj_undistCamera[i], grayImg, CV_BGR2GRAY);	//グレースケール化
 			cv::cornerSubPix(checkerimg_proj_undistCamera[i], cameraImagePoints_proj[i], cv::Size(3, 3), cv::Size(-1, -1), criteria);  //コーナー位置をサブピクセル精度に修正
+			//cv::cornerSubPix(checkerimg_proj[i], cameraImagePoints_proj[i], cv::Size(3, 3), cv::Size(-1, -1), criteria);  //コーナー位置をサブピクセル精度に修正
 			// 検出点を描画する
 			//cv::drawChessboardCorners( checkerimg_proj_undistCamera[i], patternSize, ( cv::Mat )( cameraImagePoints_proj[i] ), true );
+
 			//表示
 			cv::imshow( windowname_proj, checkerimg_proj_undistCamera[i] );
+			//cv::imshow( windowname_proj, checkerimg_proj[i] );
 			//保存
 			imwrite(get_capImgFileName(bPlanefoldername, i), checkerimg_proj_undistCamera[i]);
-			cv::waitKey( 0 );
+			//imwrite(get_capImgFileName(bPlanefoldername, i), checkerimg_proj[i]);
+			waitKey( 0 );
 		}else{
-			std::cout << " ... at least 1 corner not found." << std::endl;
-			std::cout << cameraImagePoints_proj[i].size() << std::endl;
-			cv::waitKey( 1 );
+			cout << " ... at least 1 corner not found." << endl;
+			cout << cameraImagePoints_proj[i].size() << endl;
+			waitKey( 1 );
 		}
 	}
 }
@@ -214,11 +233,11 @@ void CameraCalibration(){
 
 	// チェックパターンの交点座標を求め，imagePointsに格納する
 	for(int i = 0; i < IMAGE_NUM; i++){
-		std::cout << "Find corners from image " << i;
+		cout << "Find corners from image " << i;
 		bool result = findChessboardCorners(checkerimg_cam[i], patternSize, cameraImagePoints_camera[i]);
 		if(result){
-			std::cout << " ... All corners found." << std::endl;
-			std::cout << cameraImagePoints_camera[i].size() << std::endl;
+			cout << " ... All corners found." << endl;
+			cout << cameraImagePoints_camera[i].size() << endl;
 			//cv::Mat grayImg;
 			//cv::cvtColor(checkerimg_cam[i], grayImg, CV_BGR2GRAY);	//グレースケール化
 			cv::cornerSubPix(checkerimg_cam[i], cameraImagePoints_camera[i], cv::Size(3, 3), cv::Size(-1, -1), criteria);  //コーナー位置をサブピクセル精度に修正
@@ -226,11 +245,11 @@ void CameraCalibration(){
 			//cv::drawChessboardCorners( checkerimg_cam[i], patternSize, ( cv::Mat )( cameraImagePoints_camera[i] ), true );
 			//表示
 			cv::imshow( windowname_cam, checkerimg_cam[i] );
-			cv::waitKey( 0 );
+			waitKey( 0 );
 		}else{
-			std::cout << " ... at least 1 corner not found." << std::endl;
-			std::cout << cameraImagePoints_camera[i].size() << std::endl;
-			cv::waitKey( 1 );
+			cout << " ... at least 1 corner not found." << endl;
+			cout << cameraImagePoints_camera[i].size() << endl;
+			waitKey( 1 );
 		}
 	}
 
@@ -246,49 +265,60 @@ void CameraCalibration(){
 	// これまでの値を使ってキャリブレーション
 	cv::calibrateCamera( worldPoints, cameraImagePoints_camera, checkerimg_cam[0].size(), cameraMatrix, cameraDistCoeffs, 
 			     cameraRotationVectors, cameraTranslationVectors );
-	std::cout << "Camera parameters have been estimated" << std::endl << std::endl;
+	cout << "Camera parameters have been estimated" << endl << endl;
 
 
 	//Kinectの画像は歪み補正済み？？
-	////Rプレーン画像とBPlane画像からカメラの歪みを補正し、補正後の画像を保存
- // 	std::cout << "Undistorted RPlane and BPlane images" << std::endl;
-	//cv::Mat	undistorted_r, undistorted_b, undistorted_src;
-	//cv::namedWindow( windowNameUnd_R );
-	//cv::namedWindow( windowNameUnd_B );
-	//cv::namedWindow( windowNameUnd_src );
-	//for( int i = 0; i < IMAGE_NUM; i++ ) {
-	//	cv::undistort( checkerimg_cam[i], undistorted_r, cameraMatrix, cameraDistCoeffs );
-	//	cv::undistort( checkerimg_proj[i], undistorted_b, cameraMatrix, cameraDistCoeffs );
-	//	cv::undistort( checkerimg_src[i], undistorted_src, cameraMatrix, cameraDistCoeffs );
+	//Rプレーン画像とBPlane画像からカメラの歪みを補正し、補正後の画像を保存
+  	cout << "Undistorted RPlane and BPlane images" << endl;
+	cv::Mat	undistorted_r, undistorted_b, undistorted_src;
+	cv::namedWindow( windowNameUnd_R );
+	cv::namedWindow( windowNameUnd_B );
+	cv::namedWindow( windowNameUnd_src );
+	for( int i = 0; i < IMAGE_NUM; i++ ) {
+		cv::undistort( checkerimg_cam[i], undistorted_r, cameraMatrix, cameraDistCoeffs );
+		cv::undistort( checkerimg_proj[i], undistorted_b, cameraMatrix, cameraDistCoeffs );
+		cv::undistort( checkerimg_src[i], undistorted_src, cameraMatrix, cameraDistCoeffs );
 
-	//	cv::imshow( windowNameUnd_R, undistorted_r );
-	//	cv::imshow( windowNameUnd_B, undistorted_b );
-	//	cv::imshow( windowNameUnd_src, undistorted_src );
+		cv::imshow( windowNameUnd_R, undistorted_r );
+		cv::imshow( windowNameUnd_B, undistorted_b );
+		cv::imshow( windowNameUnd_src, undistorted_src );
 
-	//	cv::imshow( windowname_cam, checkerimg_cam[i] );
-	//	cv::imshow( windowname_proj, checkerimg_proj[i] );
+		cv::imshow( windowname_cam, checkerimg_cam[i] );
+		cv::imshow( windowname_proj, checkerimg_proj[i] );
 
-	//	//checkerimg_cam_undist.push_back(undistorted_r);
-	//	//checkerimg_proj_undistCamera.push_back(undistorted_b);
-	//	//保存
-	//	imwrite(get_capImgFileName(rPlanefoldername, i), undistorted_r);
-	//	imwrite(get_capImgFileName(bPlanefoldername, i), undistorted_b);
-	//	imwrite(get_capImgFileName(undistortedfoldername, i), undistorted_src);
+		//checkerimg_cam_undist.push_back(undistorted_r);
+		//checkerimg_proj_undistCamera.push_back(undistorted_b);
+		//保存
+		imwrite(get_capImgFileName(rPlanefoldername, i), undistorted_r);
+		imwrite(get_capImgFileName(bPlanefoldername, i), undistorted_b);
+		imwrite(get_capImgFileName(undistortedfoldername, i), undistorted_src);
 
 
-	//	cv::waitKey( 0 );
-	//}
+		waitKey( 0 );
+	}
 }
 
+Point2f multHomography(Mat h, Point2f p)
+{
+	float x = (float)(h.at<double>(0) * p.x + h.at<double>(1) * p.y + h.at<double>(2));
+	float y = (float)(h.at<double>(3) * p.x + h.at<double>(4) * p.y + h.at<double>(5));
+	float z = (float)( h.at<double>(6) * p.x + h.at<double>(7) * p.y + h.at<double>(8));
+
+	x = x/z;
+	y = y/z;
+
+	return Point2f(x, y);
+}
 
 int main( int argc, char** argv )
 {
-	//画像のロード:src
+	//(1) 画像のロード:src
 	for(int i = 0; i < IMAGE_NUM; i++){
 		checkerimg_src.push_back(imread(get_capImgFileName(srcfoldername, i)));
 	}
 
-	//R,Bプレーンで分離→二値化→保存
+	//(2) R,Bプレーンで分離→二値化→保存
 	RPlanefilter();
 	BPlanefilter();
 
@@ -299,10 +329,10 @@ int main( int argc, char** argv )
 		checkerimg_proj.push_back(imread(get_capImgFileName(bPlanefoldername, i), 0));
 	}
 
-	//カメラのパラメータ推定及びカメラの歪み補正
+	//(3) カメラのパラメータ推定及びカメラの歪み補正
 	CameraCalibration();
 
-	//カメラ・プロジェクタ間のホモグラフィ行列の推定(チェッカパターンの四隅から)
+	//(4) カメラ・プロジェクタ間のホモグラフィ行列の推定(チェッカパターンの四隅から)
 	//四隅のインデックス
 	int index0 = 0;
 	int index1 = patternSize.width - 1;
@@ -318,7 +348,9 @@ int main( int argc, char** argv )
 	//今度はBプレーン画像からコーナー検出
 	findProjectorChessboardCorners();
 
-	//画像の四隅を使って初期ホモグラフィ行列を推定
+	//各画像の四隅を使って初期ホモグラフィ行列Hを推定
+	//↓
+	//(5) カメラで撮影したチェッカボードの交点をホモグラフィ変換し、プロジェクタ画像座標に変換
 
 	vector<vector<Point2f>> initial_proj_corners;
 
@@ -342,22 +374,46 @@ int main( int argc, char** argv )
 		Point2f dst_pt[] = {corner0_projImg, corner1_projImg, corner2_projImg, corner3_projImg};
 
 		//カメラ画像→プロジェクタ画像へのホモグラフィ行列
-		Mat homography_matrix = getPerspectiveTransform(src_pt,dst_pt);
+		Mat H = getPerspectiveTransform(src_pt,dst_pt);
 
-		cout << "H_" << i << ": \n" << homography_matrix << endl;
+		cout << "\nH_" << i << ": \n" << H << endl;
 
-		//カメラで撮影したチェッカパタンの四隅だけホモグラフィ変換し、プロジェクタ画像座標に変換
+		//カメラで撮影したチェッカボードの交点をホモグラフィ変換し、プロジェクタ画像座標に変換
 		vector<Point2f> checkerBoard_coners;
-		
-		Point2f boardcorner = homography_matrix * cameraImagePoints_camera[i][index0];
+		for(int j = 0; j <  PAT_SIZE; j++)
+		{
+			Point2f dst = multHomography(H, cameraImagePoints_camera[i][j]);
+			checkerBoard_coners.push_back(dst);
+
+			cout << "(" << cameraImagePoints_camera[i][j].x << ", " << cameraImagePoints_camera[i][j].y << ") ---> "
+				<< "(" << dst.x << ", " << dst.y << ")" << endl;
+		}
+		 projImagePoints_checkerboard.push_back(checkerBoard_coners);
+		 checkerBoard_coners.clear();
 
 	}
+
+	//(6) プロジェクタキャリブレーションの実行 worldPoints --- projImagePoints_checkerboard
+	cv::calibrateCamera( worldPoints, projImagePoints_checkerboard, Size(PROJECTOR_WIDTH, PROJECTOR_HEIGHT), projMatrix, projDistCoeffs, 
+			     projRotationVectors, projTranslationVectors );
+
+	cout << "Projector parameters have been estimated" << endl;
+
+	//出力
+	/*プロジェクタ*/
+	cout << "*********Projector Parameters*********" << endl;
+	cout << "Projector Matrix:\n" << projMatrix << endl;
+	cout << "Projector DistCoeffs:\n" << projDistCoeffs << endl;
+	cout << "index 0 --- Projector Rotate:\n" << projRotationVectors.at(0) << endl;
+	cout << "index 0 --- Projector Translation:\n" << projTranslationVectors.at(0) << endl;
+	/*カメラ*/
+	cout << "*********Camera Parameters*********" << endl;
+	cout << "Camera Matrix:\n" << cameraMatrix << endl;
+	cout << "Camera DistCoeffs:\n" << cameraDistCoeffs << endl;
+	cout << "index 0 --- Camera Rotate:\n" << cameraRotationVectors.at(0) << endl;
+	cout << "index 0 --- Camera Translation:\n" << cameraTranslationVectors.at(0) << endl;
+
 	waitKey(0);
 
 	return 0;
-}
-
-Point2f multHomography(Mat h, Point2f p)
-{
-	float x = h.at<float>(0) * p.x + h.at<float>(1) * p.y + 
 }
