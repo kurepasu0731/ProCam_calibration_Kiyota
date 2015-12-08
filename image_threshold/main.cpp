@@ -606,15 +606,12 @@ int main( int argc, char** argv )
 	}
 
 	//(6) プロジェクタキャリブレーションの実行 objects --- projImagePoints_checkerboard
-
-	//デバッグ用
-
 	//projImagePoints_checkerboardを変換	
 	CvPoint2D32f *dst_corners = (CvPoint2D32f *) cvAlloc (sizeof (CvPoint2D32f) * ALL_POINTS);//交点のプロジェクタ画像上の座標
 	for(int i = 0; i < IMAGE_NUM; i++)
 	{	
+		//デバッグ用
 		Mat ProjectionImage(PROJECTOR_HEIGHT, PROJECTOR_WIDTH, CV_8UC3);
-
 		for(int j = 0; j < PAT_SIZE; j++)
 		{
 			dst_corners[i * PAT_SIZE + j].x = projImagePoints_checkerboard[i][j].x;
@@ -653,6 +650,40 @@ int main( int argc, char** argv )
 		cout << "Camera DistCoeffs:\n" << cv::Mat(proj_distortion) << endl;
 		cout << "index 0 --- Camera Rotate:\n" << cv::Mat(proj_rotation) << endl;
 		cout << "index 0 --- Camera Translation:\n" << cv::Mat(proj_translation) << endl;
+
+		////歪み補正
+		//std::cout << "Undistorted images" << std::endl;
+		//const char* windowNameUndR = "Undistoted Image R";
+		//const char* windowNameUndB = "Undistoted Image B";
+		//const char* windowNameSrcR = "Src Image R";
+		//const char* windowNameSrcB = "Src Image B";
+		//cv::namedWindow( windowNameUndR );
+		//cv::namedWindow( windowNameUndB );
+		//cv::namedWindow( windowNameSrcR );
+		//cv::namedWindow( windowNameSrcB );
+
+		//for( int i = 0; i < IMAGE_NUM; i++ ) {
+		//	IplImage Rplane = checkerimg_cam_undist[i];
+		//	IplImage Bplane = checkerimg_proj_undistCamera[i];
+		//	IplImage*	undistorted_r = cvCreateImage(cvSize(Rplane.width, Rplane.height), Rplane.depth, Rplane.nChannels);
+		//	IplImage*	undistorted_b = cvCreateImage(cvSize(Bplane.width,Bplane.height), Bplane.depth, Bplane.nChannels);
+
+		//	cvUndistort2(&Rplane, undistorted_r, proj_intrinsic, proj_distortion); //Rplane画像
+		//	cvUndistort2(&Bplane, undistorted_b, proj_intrinsic, proj_distortion); //Bplane画像
+
+		//	//表示
+		//	cvShowImage( windowNameUndR, undistorted_r );
+		//	cvShowImage( windowNameUndB, undistorted_b );
+		//	cvShowImage( windowNameSrcR, &Rplane );
+		//	cvShowImage( windowNameSrcB, &Bplane );
+		//	//保存
+		//	//cvSaveImage(get_capImgFileName(undistortedfoldername, i).data(), undistorted_src);
+		//	//cvSaveImage(get_capImgFileName(rPlanefoldername, i).data(), undistorted_r);
+		//	//cvSaveImage(get_capImgFileName(bPlanefoldername, i).data(), undistorted_b);
+
+		//	cv::waitKey( 0 );
+		//}
+
 
 	//(6) プロジェクタキャリブレーションの実行 worldPoints --- projImagePoints_checkerboard
 	//cv::calibrateCamera( worldPoints, projImagePoints_checkerboard, Size(PROJECTOR_WIDTH, PROJECTOR_HEIGHT), projMatrix, projDistCoeffs, 
